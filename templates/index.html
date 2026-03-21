@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoAuth — Prior Authorization Agent</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ─── HEADER ────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24">
+        <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 14H8v-2h4v2zm4-4H8v-2h8v2zm0-4H8V7h8v2z"/>
+      </svg>
+    </div>
+    <div class="logo-text">Auto<span>Auth</span></div>
+  </div>
+  <div class="header-badge">
+    <div class="pulse-dot"></div>
+    AI-Powered Prior Authorization
+  </div>
+</header>
+
+<!-- ─── APP LAYOUT ────────────────────────────────────────── -->
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- Patient Notes Upload -->
+    <div class="sidebar-section">
+      <h3>Patient Clinical Notes</h3>
+      <div class="upload-zone" id="notesZone"
+           ondragover="handleDragOver(event,'notesZone')"
+           ondragleave="handleDragLeave('notesZone')"
+           ondrop="handleDrop(event,'notes')">
+        <input type="file" accept=".pdf" id="notesInput" onchange="handleFileSelect(event,'notes')">
+        <div class="upload-icon notes">📋</div>
+        <div class="upload-label">Upload Clinical Notes PDF</div>
+        <div class="upload-hint">Drag &amp; drop or click to browse</div>
+      </div>
+      <div class="file-loaded" id="notesLoaded">
+        <span class="file-loaded-icon">📄</span>
+        <span class="file-loaded-name" id="notesFileName"></span>
+        <span class="file-loaded-pages" id="notesPages"></span>
+        <button class="file-remove" onclick="removeFile('notes')">✕</button>
+      </div>
+      <div class="extract-status" id="notesStatus"></div>
+    </div>
+
+    <div class="section-divider"></div>
+
+    <!-- Policy Document Upload -->
+    <div class="sidebar-section">
+      <h3>Payer Policy Document</h3>
+      <div class="upload-zone" id="policyZone"
+           ondragover="handleDragOver(event,'policyZone')"
+           ondragleave="handleDragLeave('policyZone')"
+           ondrop="handleDrop(event,'policy')">
+        <input type="file" accept=".pdf" id="policyInput" onchange="handleFileSelect(event,'policy')">
+        <div class="upload-icon policy">📑</div>
+        <div class="upload-label">Upload Policy PDF</div>
+        <div class="upload-hint">Insurance coverage criteria document</div>
+      </div>
+      <div class="file-loaded" id="policyLoaded">
+        <span class="file-loaded-icon">📄</span>
+        <span class="file-loaded-name" id="policyFileName"></span>
+        <span class="file-loaded-pages" id="policyPages"></span>
+        <button class="file-remove" onclick="removeFile('policy')">✕</button>
+      </div>
+      <div class="extract-status" id="policyStatus"></div>
+    </div>
+
+    <div class="section-divider"></div>
+
+    <!-- Readiness Checklist -->
+    <div class="readiness">
+      <div class="ready-item"><div class="ready-dot" id="dot-notes"></div><span>Clinical notes uploaded</span></div>
+      <div class="ready-item"><div class="ready-dot" id="dot-policy"></div><span>Policy document uploaded</span></div>
+      <div class="ready-item"><div class="ready-dot" id="dot-ready"></div><span>Text extracted from both PDFs</span></div>
+    </div>
+
+    <!-- Actions -->
+    <button class="btn-run" id="runBtn" onclick="runAuthorization()" disabled>
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      Run Authorization
+    </button>
+
+    <button class="btn-reset" id="resetBtn" onclick="resetAll()">↺ Start Over</button>
+
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main">
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">⚕️</div>
+      <h2>Prior Authorization Agent</h2>
+      <p>Upload a patient clinical notes PDF and a payer policy PDF to run the AI-powered authorization workflow.</p>
+      <div class="empty-steps">
+        <div class="empty-step">
+          <div class="empty-step-num">1</div>
+          <div class="empty-step-text">Upload the patient's <strong>clinical notes PDF</strong> from the sidebar</div>
+        </div>
+        <div class="empty-step">
+          <div class="empty-step-num">2</div>
+          <div class="empty-step-text">Upload the <strong>payer policy PDF</strong> for the requested procedure</div>
+        </div>
+        <div class="empty-step">
+          <div class="empty-step-num">3</div>
+          <div class="empty-step-text">Click <strong>Run Authorization</strong> — agents extract, analyze, and route automatically</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document Previews -->
+    <div class="doc-preview" id="notesPreview">
+      <div class="doc-preview-header">
+        <h3>📋 Clinical Notes — <span id="notesPreviewName" style="font-weight:400;color:var(--text-muted)"></span></h3>
+        <span style="font-size:11px;color:var(--text-light)" id="notesPreviewPages"></span>
+      </div>
+      <div class="doc-preview-body" id="notesPreviewBody"></div>
+    </div>
+
+    <div class="doc-preview" id="policyPreview">
+      <div class="doc-preview-header">
+        <h3>📑 Policy Document — <span id="policyPreviewName" style="font-weight:400;color:var(--text-muted)"></span></h3>
+        <span style="font-size:11px;color:var(--text-light)" id="policyPreviewPages"></span>
+      </div>
+      <div class="doc-preview-body" id="policyPreviewBody"></div>
+    </div>
+
+    <!-- Workflow Results -->
+    <div class="workflow-section" id="workflowSection">
+      <div class="workflow-header">
+        <h2>Agent Workflow</h2>
+        <span class="processing-time" id="processingTime"></span>
+      </div>
+      <div class="agent-steps" id="agentSteps"></div>
+      <div class="human-review-notice" id="humanReviewNotice">
+        ⚠️ <span id="humanReviewText"></span>
+      </div>
+    </div>
+
+    <!-- Status Banner -->
+    <div class="status-banner" id="statusBanner">
+      <div class="banner-icon" id="bannerIcon"></div>
+      <div class="banner-content">
+        <h3 id="bannerTitle"></h3>
+        <p id="bannerSubtitle"></p>
+      </div>
+      <div class="banner-meta">
+        <span class="req-id" id="bannerReqId"></span>
+        <span class="proc-time" id="bannerProcTime"></span>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- App Logic -->
+<script src="/static/app.js"></script>
+
+</body>
+</html>
