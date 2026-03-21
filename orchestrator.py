@@ -155,7 +155,7 @@ class PAWorkflowOrchestrator:
         # Guard: if extraction already failed, skip this node
         if state.get("needs_human_review") and state.get("clinical_evidence") is None:
             logger.warning("[WORKFLOW] Skipping policy check — no clinical evidence available.")
-            return {}
+            return {"status":state.get("status",PAStatus.NEEDS_REVIEW)}
 
         clinical_evidence: ClinicalEvidence | None = state.get("clinical_evidence")
         if clinical_evidence is None:
