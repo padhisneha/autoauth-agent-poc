@@ -45,11 +45,10 @@ class LLMResponseError(LLMError):
 
 _RETRYABLE = (LLMRateLimitError, LLMTimeoutError, LLMUnavailableError)
 
-_DEFAULT_RETRY_DELAYS = (1.0, 3.0, 8.0)  # seconds between attempts
+_DEFAULT_RETRY_DELAYS = (1.0, 3.0, 8.0)
 
 
 def _with_retries(fn, *, retries: int = 3, delays: tuple = _DEFAULT_RETRY_DELAYS):
-    """Call *fn()*, retrying on transient errors with exponential back-off."""
     last_exc: Exception | None = None
     for attempt in range(retries):
         try:
@@ -66,8 +65,8 @@ def _with_retries(fn, *, retries: int = 3, delays: tuple = _DEFAULT_RETRY_DELAYS
             )
             time.sleep(wait)
         except LLMError:
-            raise  # non-retryable — surface immediately
-    raise last_exc  # type: ignore[misc]
+            raise
+    raise last_exc
 
 
 # ---------------------------------------------------------------------------
@@ -87,13 +86,8 @@ class LLMProvider(str, Enum):
 
 
 class UniversalLLMClient:
-    """
-    Universal client that wraps Anthropic, Gemini, and OpenAI behind a single
-    ``generate()`` call.  Switch providers by changing config — no code changes.
-    """
-
     def __init__(self, provider: Optional[str] = None):
-        from config import settings  # local import avoids circular dependency
+        from config import settings
 
         self.provider: str = (provider or settings.llm_provider).strip().lower()
         self.model: str = settings.llm_model
@@ -122,63 +116,40 @@ class UniversalLLMClient:
     # ------------------------------------------------------------------
 
     def _init_anthropic(self) -> None:
-        try:
-            from anthropic import Anthropic
-        except ImportError as exc:
-            raise ImportError(
-                "Anthropic SDK not installed. Run: pip install anthropic"
-            ) from exc
+        from anthropic import Anthropic
 
         api_key = self._settings.anthropic_api_key
         if not api_key:
-            raise LLMAuthError(
-                "ANTHROPIC_API_KEY is not set. "
-                "Add it to your .env file or export it as an environment variable."
-            )
+            raise LLMAuthError("ANTHROPIC_API_KEY is not set.")
 
         self.client = Anthropic(api_key=api_key)
         if not self.model or self.model == "auto":
             self.model = "claude-sonnet-4-20250514"
 
     def _init_gemini(self) -> None:
-        try:
-            import google.generativeai as genai
-        except ImportError as exc:
-            raise ImportError(
-                "Google Generative AI SDK not installed. "
-                "Run: pip install google-generativeai"
-            ) from exc
+        import google.generativeai as genai
 
         api_key = self._settings.gemini_api_key
         if not api_key:
-            raise LLMAuthError(
-                "GEMINI_API_KEY is not set. "
-                "Add it to your .env file or export it as an environment variable."
-            )
+            raise LLMAuthError("GEMINI_API_KEY is not set.")
 
         genai.configure(api_key=api_key)
         if not self.model or self.model == "auto":
             self.model = "gemini-1.5-pro"
+
         self.client = genai.GenerativeModel(self.model)
 
     def _init_openai(self) -> None:
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise ImportError(
-                "OpenAI SDK not installed. Run: pip install openai"
-            ) from exc
+        from openai import OpenAI
 
         api_key = self._settings.openai_api_key
         if not api_key:
-            raise LLMAuthError(
-                "OPENAI_API_KEY is not set. "
-                "Add it to your .env file or export it as an environment variable."
-            )
+            raise LLMAuthError("OPENAI_API_KEY is not set.")
 
         self.client = OpenAI(api_key=api_key)
+
         if not self.model or self.model == "auto":
-            self.model = "gpt-4"
+            self.model = "gpt-5-mini"
 
     # ------------------------------------------------------------------
     # Public interface
@@ -192,27 +163,7 @@ class UniversalLLMClient:
         system_prompt: Optional[str] = None,
         retries: int = 3,
     ) -> str:
-        """
-        Generate a response from the configured LLM.
 
-        Args:
-            prompt:        User-facing prompt.
-            max_tokens:    Override the default max-token limit.
-            temperature:   Override the default temperature.
-            system_prompt: System-level instruction (supported by all providers).
-            retries:       How many times to retry on transient errors.
-
-        Returns:
-            The model's text response (never empty — raises on empty content).
-
-        Raises:
-            LLMAuthError:        Bad or missing API key.
-            LLMRateLimitError:   Exhausted after *retries* rate-limit errors.
-            LLMTimeoutError:     Exhausted after *retries* timeout errors.
-            LLMUnavailableError: Provider returned repeated 5xx errors.
-            LLMResponseError:    Model returned an empty or malformed response.
-            LLMError:            Any other unclassified provider error.
-        """
         if not prompt or not prompt.strip():
             raise ValueError("prompt must not be empty")
 
@@ -224,9 +175,10 @@ class UniversalLLMClient:
             LLMProvider.GEMINI: self._generate_gemini,
             LLMProvider.OPENAI: self._generate_openai,
         }
+
         generate_fn = _dispatch[LLMProvider(self.provider)]
 
-        def _call() -> str:
+        def _call():
             return generate_fn(prompt, max_tokens, temperature, system_prompt)
 
         result = _with_retries(_call, retries=retries)
@@ -235,6 +187,7 @@ class UniversalLLMClient:
             raise LLMResponseError(
                 f"Provider '{self.provider}' returned an empty response."
             )
+
         return result
 
     # ------------------------------------------------------------------
@@ -242,14 +195,10 @@ class UniversalLLMClient:
     # ------------------------------------------------------------------
 
     def _generate_anthropic(
-        self,
-        prompt: str,
-        max_tokens: int,
-        temperature: float,
-        system_prompt: Optional[str],
+        self, prompt: str, max_tokens: int, temperature: float, system_prompt: Optional[str]
     ) -> str:
         try:
-            kwargs: dict = {
+            kwargs = {
                 "model": self.model,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
@@ -261,46 +210,35 @@ class UniversalLLMClient:
             response = self.client.messages.create(**kwargs)
 
             if not response.content:
-                raise LLMResponseError("Anthropic returned no content blocks.")
+                raise LLMResponseError("Anthropic returned no content.")
             return response.content[0].text
 
-        except LLMError:
-            raise
         except Exception as exc:
             _raise_classified(exc, "Anthropic")
 
     def _generate_gemini(
-        self,
-        prompt: str,
-        max_tokens: int,
-        temperature: float,
-        system_prompt: Optional[str],
+        self, prompt: str, max_tokens: int, temperature: float, system_prompt: Optional[str]
     ) -> str:
         try:
             full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-            generation_config = {
-                "temperature": temperature,
-                "max_output_tokens": max_tokens,
-            }
+
             response = self.client.generate_content(
-                full_prompt, generation_config=generation_config
+                full_prompt,
+                generation_config={
+                    "temperature": temperature,
+                    "max_output_tokens": max_tokens,
+                },
             )
 
             if not response.text:
-                raise LLMResponseError("Gemini returned an empty text response.")
+                raise LLMResponseError("Gemini returned empty response.")
             return response.text
 
-        except LLMError:
-            raise
         except Exception as exc:
             _raise_classified(exc, "Gemini")
 
     def _generate_openai(
-        self,
-        prompt: str,
-        max_tokens: int,
-        temperature: float,
-        system_prompt: Optional[str],
+        self, prompt: str, max_tokens: int, temperature: float, system_prompt: Optional[str]
     ) -> str:
         try:
             messages = []
@@ -311,80 +249,50 @@ class UniversalLLMClient:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_tokens,  # ✅ FIXED HERE
                 temperature=temperature,
             )
 
             content = response.choices[0].message.content
             if not content:
-                raise LLMResponseError("OpenAI returned an empty message content.")
+                raise LLMResponseError("OpenAI returned empty response.")
+
             return content
 
-        except LLMError:
-            raise
         except Exception as exc:
             _raise_classified(exc, "OpenAI")
 
     # ------------------------------------------------------------------
-    # Introspection
+    # Debug info
     # ------------------------------------------------------------------
 
     def get_provider_info(self) -> dict:
         return {
             "provider": self.provider,
             "model": self.model,
-            "max_tokens": str(self.max_tokens),
-            "temperature": str(self.temperature),
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
         }
 
 
 # ---------------------------------------------------------------------------
-# Error classification helper
+# Error classification
 # ---------------------------------------------------------------------------
 
 
-def _raise_classified(exc: Exception, provider: str) -> None:
-    """
-    Convert provider-specific SDK exceptions into our custom hierarchy.
-    Always raises — never returns.
-    """
-    msg = str(exc)
-    exc_type = type(exc).__name__
+def _raise_classified(exc: Exception, provider: str):
+    msg = str(exc).lower()
 
-    # Auth errors
-    if any(
-        kw in msg.lower()
-        for kw in ("authentication", "auth", "api_key", "unauthorized", "403", "invalid api key")
-    ):
-        raise LLMAuthError(
-            f"{provider} authentication failed: {msg}. Check your API key."
-        ) from exc
+    if "api key" in msg or "unauthorized" in msg:
+        raise LLMAuthError(msg)
 
-    # Rate limits
-    if any(kw in msg.lower() for kw in ("rate limit", "rate_limit", "ratelimit", "429", "too many")):
-        raise LLMRateLimitError(
-            f"{provider} rate limit exceeded: {msg}"
-        ) from exc
+    if "rate limit" in msg or "429" in msg:
+        raise LLMRateLimitError(msg)
 
-    # Timeouts
-    if any(
-        kw in msg.lower()
-        for kw in ("timeout", "timed out", "read timeout", "connect timeout")
-    ) or "Timeout" in exc_type:
-        raise LLMTimeoutError(
-            f"{provider} request timed out: {msg}"
-        ) from exc
+    if "timeout" in msg:
+        raise LLMTimeoutError(msg)
 
-    # Service unavailable / 5xx
-    if any(
-        kw in msg.lower()
-        for kw in ("503", "502", "500", "service unavailable", "overloaded", "internal server")
-    ):
-        raise LLMUnavailableError(
-            f"{provider} service unavailable: {msg}"
-        ) from exc
+    if "503" in msg or "unavailable" in msg:
+        raise LLMUnavailableError(msg)
 
-    # Fallback
-    raise LLMError(
-        f"Unexpected {provider} error ({exc_type}): {msg}"
-    ) from exc
+    raise LLMError(f"{provider} error: {exc}")

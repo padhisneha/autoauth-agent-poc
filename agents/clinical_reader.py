@@ -178,9 +178,21 @@ class ClinicalReaderAgent:
                 )
                 raw[field] = list(value) if hasattr(value, "__iter__") else []
 
-        dates = raw.get("relevant_dates")
+        dates = raw.get("relevant_dates", {})
+
         if not isinstance(dates, dict):
             raw["relevant_dates"] = {}
+        else:
+            for key, value in dates.items():
+                # normalize everything to list for consistency
+                if isinstance(value, str):
+                    dates[key] = [value]
+                elif value is None:
+                    dates[key] = []
+                elif not isinstance(value, list):
+                    dates[key] = [str(value)]
+
+            raw["relevant_dates"] = dates
 
         return raw
 

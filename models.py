@@ -2,7 +2,7 @@
 Data models for AutoAuth Agent system
 """
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
@@ -51,7 +51,10 @@ class ClinicalEvidence(BaseModel):
     symptoms: List[str] = Field(description="Patient symptoms")
     prior_treatments: List[str] = Field(description="Treatments already attempted")
     contraindications: List[str] = Field(default_factory=list, description="Any contraindications")
-    relevant_dates: Dict[str, str] = Field(default_factory=dict, description="Important dates")
+    relevant_dates: Dict[str, Union[str, List[str]]] = Field(
+        default_factory=dict,
+        description="Important dates"
+    )
     severity_indicators: List[str] = Field(default_factory=list, description="Severity markers")
 
 
